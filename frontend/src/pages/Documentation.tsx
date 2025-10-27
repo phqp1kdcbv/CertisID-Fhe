@@ -14,7 +14,7 @@ export default function Documentation() {
           <div className="text-center mb-16">
             <h1 className="text-5xl font-black mb-4">Documentation</h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Complete guide to understanding and using the FHE KYC platform
+              Complete guide to understanding and using the CertisID platform
             </p>
           </div>
 
@@ -27,7 +27,7 @@ export default function Documentation() {
             <Card>
               <CardContent className="pt-6">
                 <p className="text-lg text-muted-foreground leading-relaxed mb-4">
-                  FHE KYC is a revolutionary blockchain-based identity verification platform that leverages
+                  CertisID is a revolutionary blockchain-based identity verification platform that leverages
                   <strong className="text-foreground"> Fully Homomorphic Encryption (FHE)</strong> to enable
                   privacy-preserving Know Your Customer (KYC) processes.
                 </p>
@@ -47,22 +47,23 @@ export default function Documentation() {
               How It Works
             </h2>
 
-            {/* Demo Video Placeholder */}
+            {/* Demo Video */}
             <Card className="mb-8 bg-muted/30">
               <CardContent className="pt-6">
-                <div className="aspect-video w-full bg-muted rounded-lg flex items-center justify-center border-2 border-dashed border-border">
-                  <div className="text-center space-y-3">
-                    <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
-                      <svg className="w-8 h-8 text-primary" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-lg font-semibold text-foreground">Demo Video</p>
-                      <p className="text-sm text-muted-foreground">Coming Soon - Watch how the platform works</p>
-                    </div>
-                  </div>
+                <div className="aspect-video w-full bg-black rounded-lg overflow-hidden">
+                  <video
+                    controls
+                    className="w-full h-full"
+                    poster="/certisid-logo.svg"
+                    onLoadedMetadata={(e) => { (e.target as HTMLVideoElement).playbackRate = 2.0; }}
+                  >
+                    <source src="/test_demo.mp4" type="video/mp4" />
+                    Your browser does not support the video tag.
+                  </video>
                 </div>
+                <p className="text-center text-sm text-muted-foreground mt-4">
+                  Watch how CertisID platform works - Complete demonstration
+                </p>
               </CardContent>
             </Card>
 

@@ -1,4 +1,3 @@
-import { Shield } from "lucide-react";
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Link, useLocation } from 'react-router-dom';
 
@@ -11,14 +10,16 @@ export const Header = () => {
       <div className="container mx-auto px-4 py-5">
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3 group">
-            <div className="p-2.5 rounded-xl bg-primary group-hover:scale-105 transition-transform cursor-pointer">
-              <Shield className="w-6 h-6 text-white" />
-            </div>
+            <img
+              src="/certisid-logo.svg"
+              alt="CertisID Logo"
+              className="w-10 h-10 group-hover:scale-105 transition-transform"
+            />
             <div>
               <h1 className="text-xl font-black tracking-tight text-primary">
-                FHE KYC
+                CertisID
               </h1>
-              <p className="text-xs text-muted-foreground font-medium">Encrypted Identity</p>
+              <p className="text-xs text-muted-foreground font-medium">Verified Identity Platform</p>
             </div>
           </Link>
 

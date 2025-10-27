@@ -1,4 +1,4 @@
-import { Shield, Github, Twitter, FileText, Mail } from "lucide-react";
+import { Github, Twitter, FileText, Mail } from "lucide-react";
 
 export const Footer = () => {
   return (
@@ -7,17 +7,19 @@ export const Footer = () => {
         <div className="grid md:grid-cols-4 gap-12 mb-12">
           <div className="space-y-5 md:col-span-2">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-primary">
-                <Shield className="w-6 h-6 text-white" />
-              </div>
+              <img
+                src="/certisid-logo.svg"
+                alt="CertisID Logo"
+                className="w-12 h-12"
+              />
               <span className="font-black text-2xl text-primary">
-                FHE KYC
+                CertisID
               </span>
             </div>
             <p className="text-muted-foreground leading-relaxed max-w-md">
-              Revolutionary blockchain identity verification powered by Fully Homomorphic Encryption. 
+              Revolutionary blockchain identity verification powered by Fully Homomorphic Encryption.
               <span className="block mt-2 font-semibold text-foreground">
-                Privacy-first, secure by design, verifiable by default.
+                Certified by design, verifiable by default.
               </span>
             </p>
             <div className="flex gap-3 pt-2">
@@ -68,7 +70,7 @@ export const Footer = () => {
         <div className="pt-8 border-t border-border/40">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-sm text-muted-foreground text-center md:text-left">
-              &copy; 2025 FHE KYC. All rights reserved. Built with privacy and security at the core.
+              &copy; 2025 CertisID. All rights reserved. Built with security and trust at the core.
             </p>
             <div className="flex gap-6 text-sm">
               <a href="#" className="text-muted-foreground hover:text-primary transition-smooth font-medium">
