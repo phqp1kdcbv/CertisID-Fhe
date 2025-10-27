@@ -1,0 +1,198 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {SepoliaConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
+import {
+    FHE,
+    ebool,
+    euint8,
+    euint16,
+    externalEuint8,
+    externalEuint16
+} from "@fhevm/solidity/lib/FHE.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+/**
+ * @title FHEKYC
+ * @dev Privacy-preserving KYC & qualification contract using FHE on fhEVM
+ *
+ * Design overview:
+ *  - Users submit encrypted attributes (age, country, risk, level, etc)
+ *  - Contract performs policy checks on encrypted data with FHE ops
+ *  - The result of a check is stored encrypted; user later reveals plaintext
+ *    and the contract verifies equality with FHE.eq before updating on-chain state
+ */
+contract FHEKYC is SepoliaConfig, Ownable, ReentrancyGuard {
+    // -- Data model -----------------------------------------------------------------
+
+    struct EncryptedIdentity {
+        euint8 age;          // 0..255
+        euint16 country;     // ISO-3166 numeric (0..65535)
+        euint16 riskScore;   // 0..65535
+        euint8 kycLevel;     // 0..255
+        euint8 pep;          // 0/1
+        euint8 sanctioned;   // 0/1
+        euint8 accredited;   // 0/1
+        uint256 updatedAt;
+        bool exists;
+    }
+
+    // The latest encrypted policy check result for each user (0/1)
+    mapping(address => euint8) private latestCheck;
+    mapping(address => EncryptedIdentity) private identities;
+
+    // Plain (non-sensitive) flags emitted/kept on-chain only after user confirms
+    mapping(address => bool) public kycVerified;   // generic KYC success flag
+    mapping(address => uint8) public issuedLevel;  // issued "level" token (0/1)
+
+    // Whitelisted KYC providers (off-chain verifiers) who may assist users
+    mapping(address => bool) public kycProviders;
+
+    // -- Events ---------------------------------------------------------------------
+    event ProviderUpdated(address indexed provider, bool allowed);
+    event IdentitySubmitted(address indexed user, uint256 timestamp);
+    event CheckComputed(address indexed user, uint256 timestamp);
+    event ProofClaimed(address indexed user, uint8 result);
+
+    // -- Errors ---------------------------------------------------------------------
+    error NotProvider();
+    error NoIdentity();
+    error InvalidProof();
+
+    constructor() Ownable(msg.sender) {}
+
+    // -- Admin/provider management --------------------------------------------------
+
+    function setProvider(address provider, bool allowed) external onlyOwner {
+        kycProviders[provider] = allowed;
+        emit ProviderUpdated(provider, allowed);
+    }
+
+    // -- User flows -----------------------------------------------------------------
+
+    /**
+     * @notice Submit/update encrypted identity attributes
+     * @dev Each external encrypted input must be accompanied by a ZK proof
+     */
+    function submitIdentity(
+        externalEuint8 ageExt, bytes calldata ageProof,
+        externalEuint16 countryExt, bytes calldata countryProof,
+        externalEuint16 riskExt, bytes calldata riskProof,
+        externalEuint8 levelExt, bytes calldata levelProof,
+        externalEuint8 pepExt, bytes calldata pepProof,
+        externalEuint8 sanctionedExt, bytes calldata sanctionedProof,
+        externalEuint8 accreditedExt, bytes calldata accreditedProof
+    ) external nonReentrant {
+        // Convert all external ciphertexts to internal encrypted values
+        euint8 age = FHE.fromExternal(ageExt, ageProof);
+        euint16 country = FHE.fromExternal(countryExt, countryProof);
+        euint16 riskScore = FHE.fromExternal(riskExt, riskProof);
+        euint8 kycLevel = FHE.fromExternal(levelExt, levelProof);
+        euint8 pep = FHE.fromExternal(pepExt, pepProof);
+        euint8 sanctioned = FHE.fromExternal(sanctionedExt, sanctionedProof);
+        euint8 accredited = FHE.fromExternal(accreditedExt, accreditedProof);
+
+        // Allow this contract to access the encrypted data later
+        FHE.allowThis(age);
+        FHE.allowThis(country);
+        FHE.allowThis(riskScore);
+        FHE.allowThis(kycLevel);
+        FHE.allowThis(pep);
+        FHE.allowThis(sanctioned);
+        FHE.allowThis(accredited);
+
+        identities[msg.sender] = EncryptedIdentity({
+            age: age,
+            country: country,
+            riskScore: riskScore,
+            kycLevel: kycLevel,
+            pep: pep,
+            sanctioned: sanctioned,
+            accredited: accredited,
+            updatedAt: block.timestamp,
+            exists: true
+        });
+
+        emit IdentitySubmitted(msg.sender, block.timestamp);
+    }
+
+    /**
+     * @notice Compute the standard policy check on encrypted state and store encrypted result
+     * @dev Policy (example): age>=18 AND NOT sanctioned AND risk<=600 AND (accredited==1 OR level>=2)
+     */
+    function computeStandardCheck() external {
+        EncryptedIdentity storage idt = identities[msg.sender];
+        if (!idt.exists) revert NoIdentity();
+
+        // ebool expressions
+        // age >= 18
+        // sanctioned == 0
+        // risk <= 600
+        // accredited == 1
+        // level >= 2
+        // Combine with AND/OR
+        
+        // Comparisons return encrypted booleans
+        ebool condAge = FHE.ge(idt.age, 18);
+        ebool condNotSanctioned = FHE.eq(idt.sanctioned, 0);
+        ebool condRisk = FHE.le(idt.riskScore, 600);
+        ebool condAccredited = FHE.eq(idt.accredited, 1);
+        ebool condLevel = FHE.ge(idt.kycLevel, 2);
+
+        ebool condAccOrLevel = FHE.or(condAccredited, condLevel);
+        ebool condAll = FHE.and(condAge, FHE.and(condNotSanctioned, FHE.and(condRisk, condAccOrLevel)));
+
+        // Convert ebool -> euint8 via mux(ebool, 1, 0)
+        euint8 one = FHE.asEuint8(1);
+        euint8 zero = FHE.asEuint8(0);
+        euint8 pass = FHE.select(condAll, one, zero);
+
+        // Store and allow future checks
+        latestCheck[msg.sender] = pass;
+        FHE.allowThis(pass);
+
+        emit CheckComputed(msg.sender, block.timestamp);
+    }
+
+    /**
+     * @notice Claim a public KYC proof by revealing your plaintext result 0/1
+     * @param decryptedResult The user-provided plaintext (0 or 1) corresponding to the latest encrypted check
+     */
+    function claimProof(uint8 decryptedResult) external nonReentrant {
+        if (!identities[msg.sender].exists) revert NoIdentity();
+
+        // Verify that user's plaintext matches the encrypted result
+        if (!FHE.eq(latestCheck[msg.sender], decryptedResult)) revert InvalidProof();
+
+        if (decryptedResult == 1) {
+            kycVerified[msg.sender] = true;
+            issuedLevel[msg.sender] = 1;
+        } else {
+            // User can still anchor a non-passing proof if they want
+            issuedLevel[msg.sender] = 0;
+        }
+
+        emit ProofClaimed(msg.sender, decryptedResult);
+    }
+
+    // -- Read helpers ---------------------------------------------------------------
+
+    function hasIdentity(address user) external view returns (bool) {
+        return identities[user].exists;
+    }
+
+    function lastUpdated(address user) external view returns (uint256) {
+        return identities[user].updatedAt;
+    }
+
+    /**
+     * @notice Re-encrypt the latest check result for the caller to a provided public key
+     * @dev Frontend fetches fhEVM public key and passes it here
+     */
+    function reencryptLatestCheck(bytes calldata publicKey) external view returns (bytes memory) {
+        // If user hasn't computed a check yet, return an encryption of 0
+        euint8 value = latestCheck[msg.sender];
+        return FHE.reencrypt(value, publicKey);
+    }
+}
