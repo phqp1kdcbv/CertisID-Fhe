@@ -1,0 +1,41 @@
+{
+  "name": "certisid",
+  "version": "1.0.0",
+  "description": "CertisID - Privacy-preserving blockchain identity verification platform powered by Zama FHE",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "test:identity": "hardhat test test/IdentityRegistry.test.js",
+    "test:reputation": "hardhat test test/ReputationScore.test.js",
+    "test:compliance": "hardhat test test/ComplianceVerifier.test.js",
+    "test:policy": "hardhat test test/PolicyEngine.test.js",
+    "test:all": "hardhat test test/*.test.js",
+    "deploy": "hardhat run scripts/deploy.js",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "clean": "hardhat clean"
+  },
+  "keywords": [
+    "fhe",
+    "kyc",
+    "identity",
+    "privacy",
+    "zama",
+    "ethereum",
+    "smart-contracts"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@fhevm/hardhat-plugin": "0.3.0-1",
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.0",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "hardhat": "^2.22.0"
+  },
+  "dependencies": {
+    "@fhevm/solidity": "^0.9.1",
+    "@openzeppelin/contracts": "^5.4.0",
+    "ethers": "^6.13.4"
+  }
+}
