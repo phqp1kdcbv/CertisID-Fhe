@@ -8,12 +8,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { toast } from "sonner";
-import { useAccount, useWalletClient } from "wagmi";
-import { BrowserProvider, Contract } from "ethers";
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { initializeFHE, encryptUint8, encryptUint16, encryptUint32, hashString, calculateAge } from "@/lib/fhe";
 import { getCountryCode, getCountryNames } from "@/lib/countries";
 import { IDENTITY_REGISTRY_ABI, IDENTITY_REGISTRY_ADDRESS } from "@/contracts/IdentityRegistry";
+import {
+  toastTxPending,
+  toastTxSuccess,
+  toastTxError,
+  toastLoading,
+  dismissToast,
+  isUserRejectedError,
+  toastUserRejected,
+} from "@/lib/toast-utils";
 
 const kycSchema = z.object({
   fullName: z.string().min(2, "Full name must be at least 2 characters").max(100),
@@ -28,10 +35,32 @@ type KYCFormData = z.infer<typeof kycSchema>;
 export const KYCForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [currentStep, setCurrentStep] = useState<string>("");
   const { isConnected, address } = useAccount();
-  const { data: walletClient } = useWalletClient();
 
   const countryNames = getCountryNames();
+
+  const { writeContractAsync, data: txHash, reset: resetWrite } = useWriteContract();
+
+  const { isLoading: isConfirming, isSuccess: isConfirmed, error: confirmError } = useWaitForTransactionReceipt({
+    hash: txHash,
+  });
+
+  // Handle transaction confirmation status
+  if (txHash && isConfirmed && !isSubmitted) {
+    toastTxSuccess(txHash, "KYC data encrypted and submitted successfully!");
+    setIsSubmitted(true);
+    setIsSubmitting(false);
+    setTimeout(() => {
+      setIsSubmitted(false);
+      resetWrite();
+    }, 5000);
+  }
+
+  if (txHash && confirmError && isSubmitting) {
+    toastTxError(txHash, confirmError);
+    setIsSubmitting(false);
+  }
 
   const {
     register,
@@ -47,18 +76,23 @@ export const KYCForm = () => {
   const selectedNationality = watch("nationality");
 
   const onSubmit = async (data: KYCFormData) => {
-    if (!isConnected || !walletClient) {
-      toast.error("Please connect your wallet first");
+    if (!isConnected || !address) {
+      toastTxError(undefined, "Please connect your wallet first");
       return;
     }
 
     setIsSubmitting(true);
+    setCurrentStep("Initializing FHE...");
+
+    const loadingId = "kyc-processing";
 
     try {
-      const provider = new BrowserProvider(walletClient);
-      await initializeFHE(walletClient);
+      toastLoading("Initializing FHE encryption...", loadingId);
+      await initializeFHE();
 
-      toast.info("Preparing encrypted data...");
+      setCurrentStep("Preparing data...");
+      dismissToast(loadingId);
+      toastLoading("Preparing encrypted data...", loadingId);
 
       const fullNameHash = hashString(data.fullName);
       const age = calculateAge(data.dateOfBirth);
@@ -74,11 +108,9 @@ export const KYCForm = () => {
         passportHash,
       });
 
-      toast.info("Encrypting data with FHE...");
-
-      if (!address) {
-        throw new Error("Wallet address unavailable");
-      }
+      setCurrentStep("Encrypting with FHE...");
+      dismissToast(loadingId);
+      toastLoading("Encrypting data with FHE (this may take a moment)...", loadingId);
 
       const [
         encryptedFullNameHash,
@@ -96,45 +128,47 @@ export const KYCForm = () => {
 
       console.log("Encrypted data prepared");
 
-      toast.info("Submitting to blockchain...");
+      setCurrentStep("Submitting to blockchain...");
+      dismissToast(loadingId);
 
-      const signer = await provider.getSigner();
-      const contract = new Contract(IDENTITY_REGISTRY_ADDRESS, IDENTITY_REGISTRY_ABI, signer);
+      // Submit transaction using wagmi
+      const hash = await writeContractAsync({
+        address: IDENTITY_REGISTRY_ADDRESS as `0x${string}`,
+        abi: IDENTITY_REGISTRY_ABI,
+        functionName: "submitIdentity",
+        args: [
+          encryptedFullNameHash.handle,
+          encryptedFullNameHash.proof,
+          encryptedAge.handle,
+          encryptedAge.proof,
+          encryptedAddressHash.handle,
+          encryptedAddressHash.proof,
+          encryptedCountryCode.handle,
+          encryptedCountryCode.proof,
+          encryptedPassportHash.handle,
+          encryptedPassportHash.proof,
+        ],
+      });
 
-      const tx = await contract.submitIdentity(
-        encryptedFullNameHash.handle,
-        encryptedFullNameHash.proof,
-        encryptedAge.handle,
-        encryptedAge.proof,
-        encryptedAddressHash.handle,
-        encryptedAddressHash.proof,
-        encryptedCountryCode.handle,
-        encryptedCountryCode.proof,
-        encryptedPassportHash.handle,
-        encryptedPassportHash.proof
-      );
+      // Show pending toast with transaction hash link
+      toastTxPending(hash, "Waiting for confirmation...");
+      setCurrentStep("Waiting for confirmation...");
 
-      toast.info("Waiting for transaction confirmation...");
-      await tx.wait();
-
-      toast.success("KYC data encrypted and submitted successfully!");
-      setIsSubmitted(true);
+      // Reset form
       reset();
 
-      setTimeout(() => setIsSubmitted(false), 5000);
     } catch (error: any) {
       console.error("KYC submission error:", error);
+      dismissToast(loadingId);
 
-      let errorMessage = "Failed to submit KYC data. Please try again.";
-      if (error.message?.includes("user rejected")) {
-        errorMessage = "Transaction was rejected";
-      } else if (error.message?.includes("insufficient funds")) {
-        errorMessage = "Insufficient funds for gas";
+      if (isUserRejectedError(error)) {
+        toastUserRejected();
+      } else {
+        toastTxError(undefined, error);
       }
 
-      toast.error(errorMessage);
-    } finally {
       setIsSubmitting(false);
+      setCurrentStep("");
     }
   };
 
@@ -291,13 +325,13 @@ export const KYCForm = () => {
                     type="submit"
                     variant="hero"
                     size="lg"
-                    disabled={isSubmitting || !isConnected}
+                    disabled={isSubmitting || isConfirming || !isConnected}
                     className="w-full h-14 rounded-2xl text-lg font-bold shadow-elevated hover:shadow-glow"
                   >
-                    {isSubmitting ? (
+                    {isSubmitting || isConfirming ? (
                       <>
                         <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Encrypting & Submitting to Blockchain...
+                        {currentStep || "Processing..."}
                       </>
                     ) : isSubmitted ? (
                       <>

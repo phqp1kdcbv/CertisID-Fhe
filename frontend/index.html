@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/certisid-logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
+    <link rel="preconnect" href="https://cdn.zama.org" />
     <title>CertisID - Secure Blockchain Identity Verification</title>
     <meta name="description" content="Submit your KYC information with complete privacy using Fully Homomorphic Encryption technology on the blockchain." />
     <meta name="author" content="CertisID" />
@@ -20,7 +23,11 @@
 
   <body>
     <div id="root"></div>
-    <script src="https://cdn.zama.ai/relayer-sdk-js/0.2.0/relayer-sdk-js.umd.cjs" crossorigin="anonymous"></script>
+    <script
+      src="https://cdn.zama.org/relayer-sdk-js/0.3.0-5/relayer-sdk-js.umd.cjs"
+      defer
+      crossorigin="anonymous"
+    ></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
